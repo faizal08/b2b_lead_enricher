@@ -1,10 +1,10 @@
 import streamlit as st
-from utils import (
-    fetch_apollo_leads,
-    verify_email_smtp,
-    fetch_phone_lead_canal,
-    build_custom_excel
-)
+
+# Import backend features from our modular services folder
+from services.apollo_service import fetch_apollo_leads
+from services.smtp_service import verify_email_smtp
+from services.leadcanal_service import fetch_phone_lead_canal
+from services.excel_service import build_custom_excel
 
 # Set up Streamlit Page Configuration
 st.set_page_config(
@@ -23,7 +23,6 @@ with st.form("lead_search_form"):
     company_name = st.text_input("Company Name (e.g., Dubizzle, Bayut)", value="")
     location = st.text_input("Location (e.g., Saudi Arabia, Dubai, New York)", value="")
     
-    # Seniority / Decision-Maker Dropdown Options
     seniority_levels = st.multiselect(
         "Select Decision Maker Authority Levels / Titles:",
         options=[
@@ -65,7 +64,6 @@ if submit_button:
             prospect['phone'] = phone
             enriched_list.append(prospect)
             
-            # Update background progress bar
             p_val = 33 + int(((idx + 1) / len(raw_prospects)) * 34)
             progress_bar.progress(p_val)
             
@@ -76,7 +74,6 @@ if submit_button:
         
         st.success("🎉 Extraction & Enrichment Complete!")
         
-        # Download Button for the generated Excel file
         with open(file_path, "rb") as file:
             st.download_button(
                 label="📥 Download Enriched Leads Excel File",
