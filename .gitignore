@@ -1,0 +1,13 @@
+# Virtual Environment
+venv/
+
+# Python Cache
+__pycache__/
+*.pyc
+
+# Local Data / Secrets / Excel outputs
+*.xlsx
+*.csv
+.env
+.streamlit/
+daily_usage_tracker.txt
