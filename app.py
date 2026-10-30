@@ -48,20 +48,36 @@ if submit_button:
         progress_bar = st.progress(0)
         status_text = st.empty()
         
-        # Step 1: Query Apollo / Extract Prospects
+        # Step 1: Query Apollo / Extract Prospects (Names, Titles, Domain, LinkedIn URL)
         status_text.text("Step 1/3: Extracting prospect LinkedIn URLs from Apollo...")
         raw_prospects = fetch_apollo_leads(company_name, location, seniority_levels, max_leads)
+        
+        if not raw_prospects:
+            st.warning("⚠️ No leads found matching the specified company/location criteria. Please refine your inputs.")
+            st.stop()
+            
         progress_bar.progress(33)
         
         # Step 2: Run Local Permutations & Lead Canal Phone Enrichment
         status_text.text("Step 2/3: Verifying SMTP Emails & Fetching Phone numbers via Lead Canal...")
         enriched_list = []
         for idx, prospect in enumerate(raw_prospects):
-            email, status = verify_email_smtp(prospect['first_name'], prospect['last_name'], prospect['domain'])
-            phone = fetch_phone_lead_canal(prospect['linkedin_url'], email)
+            first_name = prospect.get('first_name', '')
+            last_name = prospect.get('last_name', '')
+            domain = prospect.get('domain', '')
+            linkedin_url = prospect.get('linkedin_url', '')
+
+            # Run local SMTP verification against generated permutations
+            email, status = verify_email_smtp(first_name, last_name, domain)
             
+            # If valid SMTP match, append email. If invalid, keep email field as empty string ""
             prospect['email'] = email if status == "Valid" else ""
+
+            # Fetch phone number from LeadCanal using LinkedIn URL (and email if valid)
+            phone = fetch_phone_lead_canal(linkedin_url, prospect['email'])
             prospect['phone'] = phone
+
+            # Retain the lead record regardless of whether an email was found
             enriched_list.append(prospect)
             
             p_val = 33 + int(((idx + 1) / len(raw_prospects)) * 34)
