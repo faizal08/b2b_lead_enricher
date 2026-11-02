@@ -5,9 +5,18 @@ venv/
 __pycache__/
 *.pyc
 
-# Local Data / Secrets / Excel outputs
+# Local Environment & Secrets
+.env
+
+# Playwright Browser Profiles & Sessions
+playwright_profile/
+
+# Debug Artifacts & Screenshots
+*.png
+*.html
+
+# Local Data / Excel outputs
 *.xlsx
 *.csv
-.env
 .streamlit/
 daily_usage_tracker.txt
