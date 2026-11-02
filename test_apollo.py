@@ -3,7 +3,7 @@ from services.apollo_service import fetch_apollo_leads
 print("🔍 Testing Apollo Service (Metadata-Only / Credit Saver)...")
 
 # Test with a target domain
-test_company = "wipro.com"
+test_company = "tcs.com"
 leads = fetch_apollo_leads(
     company=test_company, 
     location="", 

@@ -146,6 +146,8 @@ def fetch_apollo_leads(company, location, seniorities, limit=20):
     }
 
     try:
+        # Added safety jitter pause before hitting the Apollo API endpoint
+        time.sleep(random.uniform(1.0, 2.0))
         print(f"🔍 Sending request to Apollo API for domain: {domain_query}...")
         response = requests.post(APOLLO_SEARCH_URL, params=params, json=payload, headers=headers, timeout=20)
         
