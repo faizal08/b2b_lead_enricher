@@ -1,6 +1,7 @@
 import os
 import re
 import time
+import random
 import requests
 import urllib.parse
 from dotenv import load_dotenv
@@ -20,26 +21,23 @@ SENIORITY_MAP = {
     "Owner / Founder": "owner"
 }
 
-def resolve_lead_via_duckduckgo_playwright(first_name, obfuscated_last, title, company_name, domain):
+def resolve_lead_via_duckduckgo_page(page, first_name, obfuscated_last, title, company_name, domain):
     """
-    Launches a visible Chromium browser to query DuckDuckGo visually using your exact query format,
-    bypassing bot blocks and showing you the search process live (0 credits).
+    Performs the search using a shared Playwright page instance with built-in retries and jitter.
     """
-    # Use your exact preferred contextual query format with the obfuscated name intact
     query = f"{first_name} {obfuscated_last} — {title} Company: {company_name} ({domain})"
     print(f"🦆 DuckDuckGo Visual Search Query: {query}")
 
-    try:
-        # headless=False lets you visually watch the search execute in real-time
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=False, slow_mo=100)
-            context = browser.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-                viewport={"width": 1280, "height": 800}
-            )
-            page = context.new_page()
+    # Retry loop implementing exponential backoff safety
+    for attempt in range(2):
+        try:
+            # Human-like random jitter delay before each search execution
+            if attempt > 0:
+                print("🔄 Retrying search with backoff pause...")
+                time.sleep(random.uniform(10.0, 15.0))
+            else:
+                time.sleep(random.uniform(3.0, 6.0))
 
-            # Navigate directly to DuckDuckGo Lite or main DDG search page
             search_url = f"https://html.duckduckgo.com/html/?q={urllib.parse.quote(query)}"
             page.goto(search_url, timeout=25000)
             
@@ -93,8 +91,6 @@ def resolve_lead_via_duckduckgo_playwright(first_name, obfuscated_last, title, c
                                 recovered_first = slug_parts[0]
                                 recovered_last = " ".join(slug_parts[1:])
 
-                    browser.close()
-
                     print(f"✨ [DuckDuckGo Resolution Success] Unmasked Name: {recovered_first} {recovered_last}")
                     print(f"🔗 [DuckDuckGo Resolution Success] Direct LinkedIn: {clean_url}")
 
@@ -104,11 +100,12 @@ def resolve_lead_via_duckduckgo_playwright(first_name, obfuscated_last, title, c
                         "last_name": recovered_last,
                         "linkedin_url": clean_url
                     }
+            
+            # If no links matched on attempt 0, break to retry once
+            break
 
-            browser.close()
-
-    except Exception as e:
-        print(f"⚠️ [DuckDuckGo Playwright Exception]: {str(e)}")
+        except Exception as e:
+            print(f"⚠️ [DuckDuckGo Playwright Exception on attempt {attempt+1}]: {str(e)}")
 
     print("⚠️ [DuckDuckGo Resolution Notice] Fallback triggered: No direct profile isolated from search results.")
     return {
@@ -162,41 +159,53 @@ def fetch_apollo_leads(company, location, seniorities, limit=20):
         people = data.get("people", []) or data.get("contacts", []) or data.get("accounts", [])
         
         results = []
-        for person in people:
-            first_name = person.get("first_name", "").strip()
-            
-            last_name = person.get("last_name", "").strip()
-            if not last_name:
-                raw_obf = person.get("last_name_obfuscated", "").strip()
-                last_name = raw_obf if raw_obf else "Executive"
-            
-            title = person.get("title", "").strip()
-            
-            org = person.get("organization", {}) or {}
-            city = person.get("city", "").strip() or org.get("city", "").strip() or "N/A"
-            country = person.get("country", "").strip() or org.get("country", "").strip() or "N/A"
-            
-            company_name = org.get("name") or company or "Target Corp"
-            domain = org.get("primary_domain") or domain_query
+        
+        # Initialize a single shared browser session for the entire batch pool
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=False, slow_mo=50)
+            context = browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                viewport={"width": 1280, "height": 800}
+            )
+            page = context.new_page()
 
-            # Execute DuckDuckGo Playwright resolution visually with your exact query
-            print(f"🔎 Resolving profile for: {first_name} {last_name} at {company_name}...")
-            resolved = resolve_lead_via_duckduckgo_playwright(first_name, last_name, title, company_name, domain)
+            for person in people:
+                first_name = person.get("first_name", "").strip()
+                
+                last_name = person.get("last_name", "").strip()
+                if not last_name:
+                    raw_obf = person.get("last_name_obfuscated", "").strip()
+                    last_name = raw_obf if raw_obf else "Executive"
+                
+                title = person.get("title", "").strip()
+                
+                org = person.get("organization", {}) or {}
+                city = person.get("city", "").strip() or org.get("city", "").strip() or "N/A"
+                country = person.get("country", "").strip() or org.get("country", "").strip() or "N/A"
+                
+                company_name = org.get("name") or company or "Target Corp"
+                domain = org.get("primary_domain") or domain_query
 
-            results.append({
-                "first_name": resolved["first_name"],
-                "last_name": resolved["last_name"],
-                "title": title if title else "Decision Maker",
-                "company": company_name,
-                "domain": domain,
-                "city": city,
-                "country": country,
-                "linkedin_url": resolved["linkedin_url"],
-                "authority_level": seniorities[0] if seniorities else "Executive"
-            })
+                # Execute resolution using the shared browser page instance
+                print(f"🔎 Resolving profile for: {first_name} {last_name} at {company_name}...")
+                resolved = resolve_lead_via_duckduckgo_page(page, first_name, last_name, title, company_name, domain)
 
-            if len(results) >= limit:
-                break
+                results.append({
+                    "first_name": resolved["first_name"],
+                    "last_name": resolved["last_name"],
+                    "title": title if title else "Decision Maker",
+                    "company": company_name,
+                    "domain": domain,
+                    "city": city,
+                    "country": country,
+                    "linkedin_url": resolved["linkedin_url"],
+                    "authority_level": seniorities[0] if seniorities else "Executive"
+                })
+
+                if len(results) >= limit:
+                    break
+
+            browser.close()
 
         return results
 
