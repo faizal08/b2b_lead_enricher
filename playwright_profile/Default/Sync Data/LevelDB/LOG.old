@@ -1,3 +1,2 @@
-2026/10/30-17:36:44.584 1938 Reusing MANIFEST C:\EIT_PROJECTS\b2b_lead_enricher\playwright_profile\Default\Sync Data\LevelDB/MANIFEST-000001
-2026/10/30-17:36:44.586 1938 Recovering log #3
-2026/10/30-17:36:44.586 1938 Reusing old log C:\EIT_PROJECTS\b2b_lead_enricher\playwright_profile\Default\Sync Data\LevelDB/000003.log 
+2026/11/02-14:51:11.649 c20 Creating DB C:\EIT_PROJECTS\b2b_lead_enricher\playwright_profile\Default\Sync Data\LevelDB since it was missing.
+2026/11/02-14:51:11.665 c20 Reusing MANIFEST C:\EIT_PROJECTS\b2b_lead_enricher\playwright_profile\Default\Sync Data\LevelDB/MANIFEST-000001

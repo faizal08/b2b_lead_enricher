@@ -1,3 +1,2 @@
-2026/10/30-17:36:44.591 5380 Reusing MANIFEST C:\EIT_PROJECTS\b2b_lead_enricher\playwright_profile\Default\Site Characteristics Database/MANIFEST-000001
-2026/10/30-17:36:44.591 5380 Recovering log #3
-2026/10/30-17:36:44.592 5380 Reusing old log C:\EIT_PROJECTS\b2b_lead_enricher\playwright_profile\Default\Site Characteristics Database/000003.log 
+2026/11/02-14:51:11.655 657c Creating DB C:\EIT_PROJECTS\b2b_lead_enricher\playwright_profile\Default\Site Characteristics Database since it was missing.
+2026/11/02-14:51:11.674 657c Reusing MANIFEST C:\EIT_PROJECTS\b2b_lead_enricher\playwright_profile\Default\Site Characteristics Database/MANIFEST-000001

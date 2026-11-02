@@ -51,6 +51,7 @@ def fetch_phone_lead_canal(linkedin_url, smtp_email=""):
         with sync_playwright() as p:
             user_data_dir = os.path.join(os.getcwd(), "playwright_profile")
 
+            # Enhanced launch arguments to completely mask automation fingerprinting
             browser_context = p.chromium.launch_persistent_context(
                 user_data_dir=user_data_dir,
                 headless=False,
@@ -59,32 +60,32 @@ def fetch_phone_lead_canal(linkedin_url, smtp_email=""):
                     "--disable-blink-features=AutomationControlled",
                     "--no-sandbox",
                     "--disable-infobars",
+                    "--disable-dev-shm-usage",
+                    "--disable-gpu",
                     "--start-maximized"
                 ],
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
                 viewport={"width": 1280, "height": 900}
             )
             
             page = browser_context.new_page()
 
-            # --- DIAGNOSTIC INSPECTOR: Log all browser console logs & network requests ---
-            page.on("console", lambda msg: print(f"🌐 [Browser Console]: {msg.text}"))
+            # Hide navigator.webdriver flag from backend fingerprinting scripts
+            page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+
+            # Diagnostic logging
             page.on("response", lambda response: print(f"📡 [API Response {response.status}]: {response.url}") if "contact" in response.url or "search" in response.url or "api" in response.url else None)
 
             page.goto("https://leadcanal.com/linkedin-contact-finder/", timeout=30000)
-            time.sleep(2.0)
+            time.sleep(2.5)
 
-            # 1. Fill URL
+            # 1. Fill URL using page.fill()
             input_selector = "input[placeholder*='linkedin.com']"
             page.wait_for_selector(input_selector, timeout=10000)
-            page.click(input_selector)
-            time.sleep(0.3)
-
-            print(f"✍️ Typing Cleaned LinkedIn URL: {formatted_url}")
-            for char in formatted_url:
-                page.type(input_selector, char, delay=random.uniform(50, 100))
-                
-            time.sleep(0.5)
+            
+            page.fill(input_selector, formatted_url)
+            print(f"✍️ Filled Cleaned LinkedIn URL: {formatted_url}")
+            time.sleep(1.0)
 
             # 2. Captcha Solving
             print(f"\n[LeadCanal Automation] Processing URL: {formatted_url}")
@@ -96,25 +97,20 @@ def fetch_phone_lead_canal(linkedin_url, smtp_email=""):
                     answer_input = page.locator("input[type='text']:visible").last
                 
                 if answer_input.count() > 0:
-                    answer_input.click()
-                    time.sleep(0.3)
-                    
-                    for char in captcha_answer:
-                        answer_input.type(char, delay=random.uniform(60, 120))
-                    
-                    print(f"✍️ Typed captcha answer '{captcha_answer}' into input box.")
-                    time.sleep(0.5)
+                    answer_input.fill(captcha_answer)
+                    print(f"✍️ Filled captcha answer '{captcha_answer}' into input box.")
+                    time.sleep(1.0)
             else:
                 print("⚠️ Automatic OCR couldn't resolve the captcha...")
                 time.sleep(5)
 
-            # 3. Click submit and capture network behavior
+            # 3. Click submit
             submit_btn = page.locator("button[type='submit'].lct-btn, button:has-text('Get contact info')").first
             if submit_btn.count() > 0:
-                print("🚀 Clicking 'Get contact info' button and inspecting network traffic...")
+                print("🚀 Clicking 'Get contact info' button...")
                 submit_btn.click()
 
-            # 4. Wait for results or timeout with full HTML dump
+            # 4. Wait for results or timeout
             try:
                 page.wait_for_selector("text=Mobile, text=Work", timeout=20000)
                 time.sleep(2.0)
@@ -144,7 +140,7 @@ def fetch_phone_lead_canal(linkedin_url, smtp_email=""):
             except Exception:
                 pass
 
-            time.sleep(5.0)  # Keep open longer so you can inspect network logs in terminal
+            time.sleep(3.0)
             browser_context.close()
 
     except Exception as e:
