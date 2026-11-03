@@ -14,6 +14,8 @@ def solve_math_captcha(page):
         captcha_box = page.locator("div:has-text('=')").first
         if captcha_box.count() > 0:
             captcha_screenshot_path = "captcha_temp.png"
+            # Add a natural human pause before taking screenshot/solving
+            time.sleep(random.uniform(0.8, 1.5))
             captcha_box.screenshot(path=captcha_screenshot_path)
             
             img = Image.open(captcha_screenshot_path)
@@ -55,7 +57,7 @@ def fetch_phone_lead_canal(linkedin_url, smtp_email=""):
             browser_context = p.chromium.launch_persistent_context(
                 user_data_dir=user_data_dir,
                 headless=False,
-                slow_mo=50,
+                slow_mo=random.randint(60, 110),  # Randomized slow_mo to mimic human movement variance
                 args=[
                     "--disable-blink-features=AutomationControlled",
                     "--no-sandbox",
@@ -77,17 +79,24 @@ def fetch_phone_lead_canal(linkedin_url, smtp_email=""):
             page.on("response", lambda response: print(f"📡 [API Response {response.status}]: {response.url}") if "contact" in response.url or "search" in response.url or "api" in response.url else None)
 
             page.goto("https://leadcanal.com/linkedin-contact-finder/", timeout=30000)
-            time.sleep(2.5)
+            
+            # ANTI-BOT SAFEGUARD: Randomized jitter pause after page load
+            time.sleep(random.uniform(3.0, 5.0))
 
-            # 1. Fill URL using page.fill()
+            # 1. Fill URL using human-like typing cadence
             input_selector = "input[placeholder*='linkedin.com']"
             page.wait_for_selector(input_selector, timeout=10000)
             
-            page.fill(input_selector, formatted_url)
-            print(f"✍️ Filled Cleaned LinkedIn URL: {formatted_url}")
-            time.sleep(1.0)
+            # Click input box naturally first
+            page.click(input_selector)
+            time.sleep(random.uniform(0.4, 0.9))
+            
+            # Type with human speed variation instead of instant population
+            page.type(input_selector, formatted_url, delay=random.randint(45, 95))
+            print(f"✍️ Filled Cleaned LinkedIn URL with human cadence: {formatted_url}")
+            time.sleep(random.uniform(1.2, 2.0))
 
-            # 2. Captcha Solving
+            # 2. Captcha Solving with delay padding
             print(f"\n[LeadCanal Automation] Processing URL: {formatted_url}")
             captcha_answer = solve_math_captcha(page)
 
@@ -97,25 +106,28 @@ def fetch_phone_lead_canal(linkedin_url, smtp_email=""):
                     answer_input = page.locator("input[type='text']:visible").last
                 
                 if answer_input.count() > 0:
-                    answer_input.fill(captcha_answer)
+                    answer_input.click()
+                    time.sleep(random.uniform(0.3, 0.7))
+                    answer_input.type(captcha_answer, delay=random.randint(60, 120))
                     print(f"✍️ Filled captcha answer '{captcha_answer}' into input box.")
-                    time.sleep(1.0)
+                    time.sleep(random.uniform(1.0, 1.8))
             else:
                 print("⚠️ Automatic OCR couldn't resolve the captcha...")
                 time.sleep(5)
 
-            # 3. Click submit
+            # 3. Click submit with pre-click hover/pause simulation
             submit_btn = page.locator("button[type='submit'].lct-btn, button:has-text('Get contact info')").first
             if submit_btn.count() > 0:
                 print("🚀 Clicking 'Get contact info' button...")
+                time.sleep(random.uniform(0.5, 1.2))
                 submit_btn.click()
 
-            # 4. Wait for results or timeout
+            # 4. Wait for results or timeout with randomized buffer
             try:
                 page.wait_for_selector("text=Mobile, text=Work", timeout=20000)
-                time.sleep(2.0)
-                page.evaluate("window.scrollBy(0, 450)")
-                time.sleep(1.0)
+                time.sleep(random.uniform(2.0, 3.5))
+                page.evaluate(f"window.scrollBy(0, {random.randint(400, 500)})")
+                time.sleep(random.uniform(1.0, 1.5))
             except Exception as e:
                 print(f"⚠️ Timeout reached. Saving full page HTML dump to 'debug_page.html'...")
                 html_content = page.content()
@@ -140,7 +152,7 @@ def fetch_phone_lead_canal(linkedin_url, smtp_email=""):
             except Exception:
                 pass
 
-            time.sleep(3.0)
+            time.sleep(random.uniform(2.5, 4.0))
             browser_context.close()
 
     except Exception as e:
