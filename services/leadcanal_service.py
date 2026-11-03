@@ -38,8 +38,8 @@ def solve_math_captcha(page):
     return None
 
 def fetch_phone_lead_canal(linkedin_url, smtp_email=""):
-    lc_email = ""
-    lc_phone = ""
+    lc_emails_list = []
+    lc_phones_list = []
 
     if not linkedin_url:
         return smtp_email, ""
@@ -52,6 +52,7 @@ def fetch_phone_lead_canal(linkedin_url, smtp_email=""):
     try:
         with sync_playwright() as p:
             user_data_dir = os.path.join(os.getcwd(), "playwright_profile")
+            print(f"🔗 Launching stealth browser context using profile: {user_data_dir}")
 
             # Enhanced launch arguments to completely mask automation fingerprinting
             browser_context = p.chromium.launch_persistent_context(
@@ -64,7 +65,9 @@ def fetch_phone_lead_canal(linkedin_url, smtp_email=""):
                     "--disable-infobars",
                     "--disable-dev-shm-usage",
                     "--disable-gpu",
-                    "--start-maximized"
+                    "--start-maximized",
+                    "--disable-extensions",
+                    "--disable-popup-blocking"
                 ],
                 user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
                 viewport={"width": 1280, "height": 900}
@@ -72,10 +75,23 @@ def fetch_phone_lead_canal(linkedin_url, smtp_email=""):
             
             page = browser_context.new_page()
 
-            # Hide navigator.webdriver flag from backend fingerprinting scripts
+            # --- ADVANCED STEALTH INJECTION PATCHES ---
             page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+            page.add_init_script("""
+                Object.defineProperty(navigator, 'plugins', {
+                    get: () => [1, 2, 3, 4, 5]
+                });
+                Object.defineProperty(navigator, 'languages', {
+                    get: () => ['en-US', 'en']
+                });
+            """)
+            page.add_init_script("""
+                window.chrome = {
+                    runtime: {}
+                };
+            """)
 
-            # Diagnostic logging
+            # Diagnostic network logging
             page.on("response", lambda response: print(f"📡 [API Response {response.status}]: {response.url}") if "contact" in response.url or "search" in response.url or "api" in response.url else None)
 
             page.goto("https://leadcanal.com/linkedin-contact-finder/", timeout=30000)
@@ -87,16 +103,14 @@ def fetch_phone_lead_canal(linkedin_url, smtp_email=""):
             input_selector = "input[placeholder*='linkedin.com']"
             page.wait_for_selector(input_selector, timeout=10000)
             
-            # Click input box naturally first
             page.click(input_selector)
             time.sleep(random.uniform(0.4, 0.9))
             
-            # Type with human speed variation instead of instant population
             page.type(input_selector, formatted_url, delay=random.randint(45, 95))
             print(f"✍️ Filled Cleaned LinkedIn URL with human cadence: {formatted_url}")
             time.sleep(random.uniform(1.2, 2.0))
 
-            # 2. Captcha Solving with delay padding
+            # 2. Captcha Solving with Tesseract OCR
             print(f"\n[LeadCanal Automation] Processing URL: {formatted_url}")
             captcha_answer = solve_math_captcha(page)
 
@@ -115,64 +129,72 @@ def fetch_phone_lead_canal(linkedin_url, smtp_email=""):
                 print("⚠️ Automatic OCR couldn't resolve the captcha...")
                 time.sleep(5)
 
-            # 3. Click submit with pre-click hover/pause simulation
+            # 3. Click submit
             submit_btn = page.locator("button[type='submit'].lct-btn, button:has-text('Get contact info')").first
             if submit_btn.count() > 0:
                 print("🚀 Clicking 'Get contact info' button...")
                 time.sleep(random.uniform(0.5, 1.2))
                 submit_btn.click()
 
-            # 4. Wait for results or timeout with randomized buffer
+            # 4. Wait for results, scroll into view, and parse data
             try:
-                page.wait_for_selector("text=Mobile, text=Work", timeout=20000)
-                time.sleep(random.uniform(2.0, 3.5))
-                page.evaluate(f"window.scrollBy(0, {random.randint(400, 500)})")
-                time.sleep(random.uniform(1.0, 1.5))
+                page.wait_for_selector(".lct-kvs, .lct-empty, p.lct-empty", timeout=25000)
+                time.sleep(3.0)  # Generous buffer for background API data return
+                
+                # Scroll down so the results card is fully visible in the viewport
+                page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                time.sleep(1.5)
+
+                # --- PRECISION AGGREGATION FROM INSPECTED DOM ---
+                # Extract all unique phone numbers from tel links
+                phone_elements = page.locator("a[href^='tel:']").all()
+                for p_el in phone_elements:
+                    p_text = p_el.inner_text().strip()
+                    if p_text and p_text not in lc_phones_list:
+                        lc_phones_list.append(p_text)
+                
+                if lc_phones_list:
+                    print(f"📞 Extracted All Phones Found: {lc_phones_list}")
+
+                # Extract all unique valid emails from result containers
+                email_elements = page.locator(".lct-point-val").all()
+                for e_el in email_elements:
+                    e_text = e_el.inner_text().strip().lower()
+                    if "@" in e_text and "get a quote" not in e_text and "contact us" not in e_text:
+                        if e_text not in lc_emails_list:
+                            lc_emails_list.append(e_text)
+
+                if lc_emails_list:
+                    print(f"📧 Extracted All Emails Found: {lc_emails_list}")
+
             except Exception as e:
-                print(f"⚠️ Timeout reached. Saving full page HTML dump to 'debug_page.html'...")
+                print(f"⚠️ Timeout or extraction error: {e}")
                 html_content = page.content()
                 with open("debug_page.html", "w", encoding="utf-8") as f:
                     f.write(html_content)
                 page.screenshot(path="debug_timeout_screen.png")
 
-            # 5. Extraction logic
-            try:
-                phone_loc = page.locator("text=Mobile").locator("xpath=..").locator("div").first
-                if phone_loc.count() > 0:
-                    lc_phone = phone_loc.inner_text().strip()
-                    print(f"📞 Extracted Phone: {lc_phone}")
-            except Exception:
-                pass
-
-            try:
-                email_loc = page.locator("text=Work").locator("xpath=..").locator("div").first
-                if email_loc.count() > 0:
-                    lc_email = email_loc.inner_text().strip().lower()
-                    print(f"📧 Extracted Email: {lc_email}")
-            except Exception:
-                pass
-
-            time.sleep(random.uniform(2.5, 4.0))
+            print("\n🔍 [Inspection Hold] Keeping browser open for 15 seconds to review results...")
+            time.sleep(15)
             browser_context.close()
 
     except Exception as e:
         print(f"❌ Error during LeadCanal automation: {e}")
 
-    # --- Clean strings & merging ---
-    lc_email = lc_email.strip().lower()
-    lc_phone = lc_phone.strip()
+    # --- Comprehensive Cleaning, Matching & Merging Logic ---
     smtp_email = smtp_email.strip().lower()
 
-    final_email = ""
-    if not smtp_email:
-        final_email = lc_email
-    elif not lc_email:
-        final_email = smtp_email
-    elif smtp_email == lc_email:
-        final_email = smtp_email
-    else:
-        final_email = f"{smtp_email}, {lc_email}"
+    # Build the final merged unique email list starting with SMTP email if provided
+    final_emails_list = []
+    if smtp_email:
+        final_emails_list.append(smtp_email)
 
-    final_phone = lc_phone if lc_phone else ""
+    # Append scraped LeadCanal emails if they are not already in the list (deduplication)
+    for email in lc_emails_list:
+        if email not in final_emails_list:
+            final_emails_list.append(email)
 
-    return final_email, final_phone
+    final_email_str = ", ".join(final_emails_list)
+    final_phone_str = ", ".join(lc_phones_list)
+
+    return final_email_str, final_phone_str

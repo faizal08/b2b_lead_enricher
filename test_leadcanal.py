@@ -12,11 +12,11 @@ def run_leadcanal_test():
     print("==================================================\n")
 
     # Sample test parameters
-    test_linkedin_url = "https://www.linkedin.com/in/rafiq-ahamed"
+    test_linkedin_url = "https://www.linkedin.com/in/k-krithivasan-84659325/"
     
     # Test Scenario: Simulating a dummy SMTP email to test email comparison & merging logic
     # (Change this to test different merging paths: matching email, differing email, or empty string "")
-    test_smtp_email = "rafiq@eitworks.com"
+    test_smtp_email = "krithivasan@tcs.com"
 
     print(f"Target LinkedIn URL : {test_linkedin_url}")
     print(f"Incoming SMTP Email : '{test_smtp_email}'")
