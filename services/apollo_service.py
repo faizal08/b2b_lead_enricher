@@ -5,7 +5,7 @@ import random
 import requests
 import urllib.parse
 from dotenv import load_dotenv
-from playwright.sync_api import sync_playwright
+from ddgs import DDGS
 
 load_dotenv()
 
@@ -21,98 +21,112 @@ SENIORITY_MAP = {
     "Owner / Founder": "owner"
 }
 
-def resolve_lead_via_duckduckgo_page(page, first_name, obfuscated_last, title, company_name, domain):
+def clean_extracted_name(raw_name):
     """
-    Performs the search using a shared Playwright page instance with built-in retries and jitter.
+    Strips out trailing job titles, company noise, and LinkedIn tags from raw result headers.
+    """
+    if not raw_name:
+        return ""
+    
+    # Remove leading 'LinkedIn' or similar tags
+    name = re.sub(r'(?i)^linkedin\s*[\.\·\-]?\s*', '', raw_name).strip()
+    
+    # Split on common separators used in result titles (-, |, :, —, etc.)
+    name_parts = re.split(r'[\–\-\|\:\,]', name)
+    first_part = name_parts[0].strip()
+    
+    # Remove any stray profile numbers or hash IDs (e.g., 1a868110)
+    first_part = re.sub(r'\b[a-f0-9]{6,}\b', '', first_part, flags=re.IGNORECASE).strip()
+    
+    return first_part
+
+def parse_name_from_slug(clean_url):
+    """
+    Extracts and sanitizes a name from a LinkedIn profile slug, stripping hex IDs/hashes.
+    """
+    if "linkedin.com/in/" not in clean_url:
+        return "", ""
+    
+    slug = clean_url.split("linkedin.com/in/")[1].split("/")[0]
+    # Remove trailing hashes/alphanumeric IDs commonly added by LinkedIn
+    slug_clean = re.sub(r'-[a-f0-9]{6,}$', '', slug, flags=re.IGNORECASE)
+    slug_clean = re.sub(r'[\-\.]', ' ', slug_clean)
+    
+    parts = [p.capitalize() for p in slug_clean.split() if not p.isdigit() and len(p) > 1]
+    if len(parts) >= 2:
+        return parts[0], " ".join(parts[1:])
+    return "", ""
+
+def resolve_lead_via_duckduckgo_package(first_name, obfuscated_last, title, company_name, domain):
+    """
+    Resolves LinkedIn URLs and unmasks obfuscated last names using a multi-layered extraction system.
     """
     query = f"{first_name} {obfuscated_last} — {title} Company: {company_name} ({domain})"
-    print(f"🦆 DuckDuckGo Visual Search Query: {query}")
+    print(f"🦆 DuckDuckGo Search Query: {query}")
 
-    # Retry loop implementing exponential backoff safety
+    clean_last_stub = obfuscated_last.replace("*", "").strip()
+    recovered_first = first_name
+    recovered_last = clean_last_stub if clean_last_stub else "Executive"
+    
+    fallback_url = f"https://www.linkedin.com/search/results/all/?keywords={urllib.parse.quote(f'{first_name} {company_name}')}"
+    clean_url = fallback_url
+
     for attempt in range(2):
         try:
-            # Human-like random jitter delay before each search execution
             if attempt > 0:
                 print("🔄 Retrying search with backoff pause...")
-                time.sleep(random.uniform(10.0, 15.0))
+                time.sleep(random.uniform(3.0, 5.0))
             else:
-                time.sleep(random.uniform(3.0, 6.0))
+                time.sleep(random.uniform(1.0, 2.0))
 
-            search_url = f"https://html.duckduckgo.com/html/?q={urllib.parse.quote(query)}"
-            page.goto(search_url, timeout=25000)
-            
-            # Wait for results container to render
-            try:
-                page.wait_for_selector(".result", timeout=7000)
-            except Exception:
-                time.sleep(3)
-
-            # Query all result links on the page
-            links = page.query_selector_all("a.result__url, a.result__snippet, a")
-
-            for link in links:
-                href = link.get_attribute("href") or ""
+            with DDGS() as ddgs:
+                results = list(ddgs.text(query, max_results=8))
                 
-                # Unwrap DuckDuckGo redirect link if present
-                if "uddg=" in href:
-                    try:
-                        parsed = urllib.parse.parse_qs(urllib.parse.urlparse(href).query)
-                        if "uddg" in parsed:
-                            href = parsed["uddg"][0]
-                    except Exception:
-                        pass
+                for r in results:
+                    href = r.get("href", "")
+                    title_text = r.get("title", "")
+                    body_text = r.get("body", "")
 
-                if "linkedin.com/in/" in href:
-                    clean_url = href.split("?")[0].rstrip("/")
+                    if "linkedin.com/in/" in href:
+                        clean_url = href.split("?")[0].rstrip("/")
 
-                    # Extract text from surrounding title or snippet to recover the unmasked name
-                    parent_result = link.evaluate_handle("node => node.closest('.result')")
-                    snippet_text = parent_result.inner_text() if parent_result else ""
+                        # STAGE 1: Try extracting clean full name from the result Title header
+                        extracted_name_str = clean_extracted_name(title_text or body_text)
+                        parts = extracted_name_str.split()
 
-                    recovered_first = first_name
-                    recovered_last = obfuscated_last
-
-                    if snippet_text:
-                        # Parse out name components from result block
-                        raw_name = re.split(r'[\–\-\|\:\,]', snippet_text)[0].strip()
-                        raw_name = re.sub(r'(?i)^linkedin\s*[\.\·\-]?\s*', '', raw_name).strip()
-                        
-                        parts = raw_name.split()
-                        if len(parts) >= 2:
+                        if len(parts) >= 2 and len(parts[0]) <= 15 and len(parts[1]) <= 20:
                             recovered_first = parts[0]
                             recovered_last = " ".join(parts[1:])
+                        else:
+                            # STAGE 2: Fallback to sanitized LinkedIn slug parsing
+                            slug_first, slug_last = parse_name_from_slug(clean_url)
+                            if slug_first and slug_last:
+                                recovered_first = slug_first
+                                recovered_last = slug_last
+                            else:
+                                recovered_first = first_name
+                                recovered_last = clean_last_stub
 
-                    # Fallback extraction from profile slug if needed
-                    if "*" in recovered_last or recovered_last == obfuscated_last:
-                        if "linkedin.com/in/" in clean_url:
-                            slug = clean_url.split("linkedin.com/in/")[1].split("/")[0]
-                            slug_parts = [p.capitalize() for p in slug.split("-") if not p.isdigit() and len(p) > 1]
-                            if len(slug_parts) >= 2:
-                                recovered_first = slug_parts[0]
-                                recovered_last = " ".join(slug_parts[1:])
+                        print(f"✨ [DuckDuckGo Resolution Success] Unmasked Name: {recovered_first} {recovered_last}")
+                        print(f"🔗 [DuckDuckGo Resolution Success] Direct LinkedIn: {clean_url}")
 
-                    print(f"✨ [DuckDuckGo Resolution Success] Unmasked Name: {recovered_first} {recovered_last}")
-                    print(f"🔗 [DuckDuckGo Resolution Success] Direct LinkedIn: {clean_url}")
-
-                    return {
-                        "full_name": f"{recovered_first} {recovered_last}",
-                        "first_name": recovered_first,
-                        "last_name": recovered_last,
-                        "linkedin_url": clean_url
-                    }
-            
-            # If no links matched on attempt 0, break to retry once
+                        return {
+                            "full_name": f"{recovered_first} {recovered_last}",
+                            "first_name": recovered_first,
+                            "last_name": recovered_last,
+                            "linkedin_url": clean_url
+                        }
             break
 
         except Exception as e:
-            print(f"⚠️ [DuckDuckGo Playwright Exception on attempt {attempt+1}]: {str(e)}")
+            print(f"⚠️ [DuckDuckGo Package Exception on attempt {attempt+1}]: {str(e)}")
 
-    print("⚠️ [DuckDuckGo Resolution Notice] Fallback triggered: No direct profile isolated from search results.")
+    print("⚠️ [DuckDuckGo Resolution Notice] Fallback triggered: Using generated profile target.")
     return {
-        "full_name": f"{first_name} {obfuscated_last}",
+        "full_name": f"{first_name} {clean_last_stub}",
         "first_name": first_name,
-        "last_name": obfuscated_last,
-        "linkedin_url": f"https://www.linkedin.com/pub/dir/{first_name}/{company_name}"
+        "last_name": clean_last_stub,
+        "linkedin_url": fallback_url
     }
 
 def fetch_apollo_leads(company, location, seniorities, limit=20):
@@ -146,7 +160,6 @@ def fetch_apollo_leads(company, location, seniorities, limit=20):
     }
 
     try:
-        # Added safety jitter pause before hitting the Apollo API endpoint
         time.sleep(random.uniform(1.0, 2.0))
         print(f"🔍 Sending request to Apollo API for domain: {domain_query}...")
         response = requests.post(APOLLO_SEARCH_URL, params=params, json=payload, headers=headers, timeout=20)
@@ -161,53 +174,41 @@ def fetch_apollo_leads(company, location, seniorities, limit=20):
         people = data.get("people", []) or data.get("contacts", []) or data.get("accounts", [])
         
         results = []
-        
-        # Initialize a single shared browser session for the entire batch pool
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=False, slow_mo=50)
-            context = browser.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-                viewport={"width": 1280, "height": 800}
-            )
-            page = context.new_page()
 
-            for person in people:
-                first_name = person.get("first_name", "").strip()
-                
-                last_name = person.get("last_name", "").strip()
-                if not last_name:
-                    raw_obf = person.get("last_name_obfuscated", "").strip()
-                    last_name = raw_obf if raw_obf else "Executive"
-                
-                title = person.get("title", "").strip()
-                
-                org = person.get("organization", {}) or {}
-                city = person.get("city", "").strip() or org.get("city", "").strip() or "N/A"
-                country = person.get("country", "").strip() or org.get("country", "").strip() or "N/A"
-                
-                company_name = org.get("name") or company or "Target Corp"
-                domain = org.get("primary_domain") or domain_query
+        for person in people:
+            first_name = person.get("first_name", "").strip()
+            
+            last_name = person.get("last_name", "").strip()
+            if not last_name:
+                raw_obf = person.get("last_name_obfuscated", "").strip()
+                last_name = raw_obf if raw_obf else "Executive"
+            
+            title = person.get("title", "").strip()
+            
+            org = person.get("organization", {}) or {}
+            city = person.get("city", "").strip() or org.get("city", "").strip() or "N/A"
+            country = person.get("country", "").strip() or org.get("country", "").strip() or "N/A"
+            
+            company_name = org.get("name") or company or "Target Corp"
+            domain = org.get("primary_domain") or domain_query
 
-                # Execute resolution using the shared browser page instance
-                print(f"🔎 Resolving profile for: {first_name} {last_name} at {company_name}...")
-                resolved = resolve_lead_via_duckduckgo_page(page, first_name, last_name, title, company_name, domain)
+            print(f"🔎 Resolving profile for: {first_name} {last_name} at {company_name}...")
+            resolved = resolve_lead_via_duckduckgo_package(first_name, last_name, title, company_name, domain)
 
-                results.append({
-                    "first_name": resolved["first_name"],
-                    "last_name": resolved["last_name"],
-                    "title": title if title else "Decision Maker",
-                    "company": company_name,
-                    "domain": domain,
-                    "city": city,
-                    "country": country,
-                    "linkedin_url": resolved["linkedin_url"],
-                    "authority_level": seniorities[0] if seniorities else "Executive"
-                })
+            results.append({
+                "first_name": resolved["first_name"],
+                "last_name": resolved["last_name"],
+                "title": title if title else "Decision Maker",
+                "company_name": company_name,
+                "domain": domain,
+                "city": city,
+                "country": country,
+                "linkedin_url": resolved["linkedin_url"],
+                "authority_level": seniorities[0] if seniorities else "Executive"
+            })
 
-                if len(results) >= limit:
-                    break
-
-            browser.close()
+            if len(results) >= limit:
+                break
 
         return results
 
