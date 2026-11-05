@@ -184,7 +184,7 @@ if submit_button:
             print(f"     • Final Phones : {lead.get('phone', '(None)')}")
             print("     " + "-"*60)
 
-        file_path = build_custom_excel(enriched_list, company_name)
+        file_path = build_custom_excel(enriched_list, company_name, search_location=location)
         
         print(f"\n⬅️ [EXCEL SERVICE RESPONSE] Master Excel File Compiled Successfully -> File Path: '{file_path}'")
         print("="*80 + "\n")

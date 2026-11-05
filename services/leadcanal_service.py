@@ -49,15 +49,18 @@ def fetch_phone_lead_canal(linkedin_url, smtp_email=""):
     formatted_url = re.sub(r'^www\.', '', formatted_url)
     formatted_url = formatted_url.rstrip('/')
 
+    # Dynamically read HEADLESS value from your .env file or environment variables
+    is_headless = os.getenv("HEADLESS", "false").strip().lower() == "true"
+
     try:
         with sync_playwright() as p:
             user_data_dir = os.path.join(os.getcwd(), "playwright_profile")
-            print(f"🔗 Launching stealth browser context using profile: {user_data_dir}")
+            print(f"🔗 Launching browser context (Headless: {is_headless}) using profile: {user_data_dir}")
 
             # Enhanced launch arguments to completely mask automation fingerprinting
             browser_context = p.chromium.launch_persistent_context(
                 user_data_dir=user_data_dir,
-                headless=False,
+                headless=is_headless,
                 slow_mo=random.randint(60, 110),  # Randomized slow_mo to mimic human movement variance
                 args=[
                     "--disable-blink-features=AutomationControlled",
@@ -75,7 +78,7 @@ def fetch_phone_lead_canal(linkedin_url, smtp_email=""):
             
             page = browser_context.new_page()
 
-            # --- ADVANCED STEALTH INJECTION PATCHES ---
+            # --- ROBUST NATIVE ADVANCED STEALTH INJECTION PATCHES ---
             page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
             page.add_init_script("""
                 Object.defineProperty(navigator, 'plugins', {
@@ -146,7 +149,6 @@ def fetch_phone_lead_canal(linkedin_url, smtp_email=""):
                 time.sleep(1.5)
 
                 # --- PRECISION AGGREGATION FROM INSPECTED DOM ---
-                # Extract all unique phone numbers from tel links
                 phone_elements = page.locator("a[href^='tel:']").all()
                 for p_el in phone_elements:
                     p_text = p_el.inner_text().strip()
@@ -156,7 +158,6 @@ def fetch_phone_lead_canal(linkedin_url, smtp_email=""):
                 if lc_phones_list:
                     print(f"📞 Extracted All Phones Found: {lc_phones_list}")
 
-                # Extract all unique valid emails from result containers
                 email_elements = page.locator(".lct-point-val").all()
                 for e_el in email_elements:
                     e_text = e_el.inner_text().strip().lower()
@@ -174,8 +175,11 @@ def fetch_phone_lead_canal(linkedin_url, smtp_email=""):
                     f.write(html_content)
                 page.screenshot(path="debug_timeout_screen.png")
 
-            print("\n🔍 [Inspection Hold] Keeping browser open for 15 seconds to review results...")
-            time.sleep(15)
+            # Only pause for visual inspection if running locally with visible browser
+            if not is_headless:
+                print("\n🔍 [Inspection Hold] Keeping browser open for 10 seconds to review results...")
+                time.sleep(10)
+                
             browser_context.close()
 
     except Exception as e:
@@ -184,12 +188,10 @@ def fetch_phone_lead_canal(linkedin_url, smtp_email=""):
     # --- Comprehensive Cleaning, Matching & Merging Logic ---
     smtp_email = smtp_email.strip().lower()
 
-    # Build the final merged unique email list starting with SMTP email if provided
     final_emails_list = []
     if smtp_email:
         final_emails_list.append(smtp_email)
 
-    # Append scraped LeadCanal emails if they are not already in the list (deduplication)
     for email in lc_emails_list:
         if email not in final_emails_list:
             final_emails_list.append(email)

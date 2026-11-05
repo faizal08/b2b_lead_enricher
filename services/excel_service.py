@@ -2,24 +2,30 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
-def build_custom_excel(records, company_name):
+def build_custom_excel(records, company_name, search_location=""):
     """
     Formats extracted records into a clean, fully populated Excel workbook 
-    containing ONLY real data collected from pipeline phases (no dummies or placeholders).
+    containing ONLY real data collected from pipeline phases.
     """
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Master_Database"
     
-    # Headers trimmed to include ONLY actual collected/input data
+    # Custom ordered & renamed headers matching exact user pipeline specifications
     headers = [
-        'Record ID', 'Company Name', 'Domain', 'Country', 'City', 
-        'Website URL', 'General Email', 'Employee Count', 'DM Full Name', 'DM Title', 
-        'DM Authority Level', 'DM Direct Email', 'DM Direct Phone', 'DM LinkedIn URL', 
-        'HQ Address', 'Company LinkedIn'
+        'Record ID', 
+        'Lead Full Name', 
+        'Company Name', 
+        'Job Title', 
+        'Direct Email', 
+        'Contact Number', 
+        'LinkedIn URL', 
+        'Company LinkedIn URL', 
+        'Country', 
+        'Website URL'
     ]
     
-    # Professional Dark Green fill with White Bold text
+    # Styling Configuration
     header_fill = PatternFill(start_color="274E13", end_color="274E13", fill_type="solid")
     header_font = Font(name="Arial", size=10, bold=True, color="FFFFFF")
     data_font = Font(name="Arial", size=9)
@@ -31,6 +37,7 @@ def build_custom_excel(records, company_name):
         bottom=Side(style='thin', color='D9D9D9')
     )
     
+    # Write Headers
     ws.append(headers)
     for col_num in range(1, len(headers) + 1):
         cell = ws.cell(row=1, column=col_num)
@@ -38,45 +45,44 @@ def build_custom_excel(records, company_name):
         cell.font = header_font
         cell.alignment = center_align
         
+    # Write Data Rows
     for idx, row_data in enumerate(records, start=1):
         record_id = f"REC-2026-{idx:05d}"
         
-        # Real pipeline data extraction with safe fallbacks
         comp_name = row_data.get('company_name') or row_data.get('company') or company_name or 'Target Corp'
         domain = row_data.get('domain', '')
-        city = row_data.get('city', '')
-        country = row_data.get('country', '')
         
-        # Construct HQ Address dynamically only if city/country exist
-        hq_address = f"{city}, {country}".strip(", ") if (city or country) else ''
+        # Comprehensive Country Resolution: check lead dict keys -> fall back to input form location
+        country = (
+            row_data.get('country') or 
+            row_data.get('person_country') or 
+            row_data.get('organization_country') or 
+            search_location or 
+            'N/A'
+        ).strip().title()
         
         row = [
-            record_id,                                                    # 1. Record ID
-            comp_name,                                                    # 2. Company Name
-            domain,                                                       # 3. Domain
-            country,                                                      # 4. Country
-            city,                                                         # 5. City
-            f"https://{domain}" if domain else '',                        # 6. Website URL
-            f"info@{domain}" if domain else '',                           # 7. General Email
-            row_data.get('employee_count', ''),                           # 8. Employee Count
-            f"{row_data.get('first_name', '')} {row_data.get('last_name', '')}".strip(), # 9. DM Full Name
-            row_data.get('title', ''),                                    # 10. DM Title
-            row_data.get('authority_level', ''),                          # 11. DM Authority Level
-            row_data.get('email', ''),                                    # 12. DM Direct Email
-            row_data.get('phone', ''),                                    # 13. DM Direct Phone
-            row_data.get('linkedin_url', ''),                             # 14. DM LinkedIn URL
-            hq_address,                                                   # 15. HQ Address
-            f"https://www.linkedin.com/company/{comp_name.lower().replace(' ', '')}" if comp_name else '' # 16. Company LinkedIn
+            record_id,                                                                     # 1. Record ID
+            f"{row_data.get('first_name', '')} {row_data.get('last_name', '')}".strip(),  # 2. Lead Full Name
+            comp_name,                                                                     # 3. Company Name
+            row_data.get('title', ''),                                                     # 4. Job Title
+            row_data.get('email', ''),                                                     # 5. Direct Email
+            row_data.get('phone', ''),                                                     # 6. Contact Number
+            row_data.get('linkedin_url', ''),                                              # 7. LinkedIn URL
+            f"https://www.linkedin.com/company/{comp_name.lower().replace(' ', '')}" if comp_name else '', # 8. Company LinkedIn URL
+            country,                                                                       # 9. Country
+            f"https://{domain}" if domain else ''                                          # 10. Website URL
         ]
         ws.append(row)
         
+    # Apply cell data fonts and borders
     for r in range(2, len(records) + 2):
         for c in range(1, len(headers) + 1):
             cell = ws.cell(row=r, column=c)
             cell.font = data_font
             cell.border = thin_border
             
-    # Auto-adjust column widths with generous padding so content is never clipped
+    # Auto-adjust column widths with padding so content is clean and legible
     for col in ws.columns:
         max_len = max(len(str(cell.value or '')) for cell in col)
         col_letter = get_column_letter(col[0].column)
