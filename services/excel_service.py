@@ -52,14 +52,20 @@ def build_custom_excel(records, company_name, search_location=""):
         comp_name = row_data.get('company_name') or row_data.get('company') or company_name or 'Target Corp'
         domain = row_data.get('domain', '')
         
-        # Comprehensive Country Resolution: check lead dict keys -> fall back to input form location
-        country = (
+        # --- FIXED COUNTRY RESOLUTION ---
+        # Extract raw country strings and ignore dummy values like 'N/A' or empty strings
+        raw_country = (
             row_data.get('country') or 
             row_data.get('person_country') or 
             row_data.get('organization_country') or 
-            search_location or 
-            'N/A'
-        ).strip().title()
+            ''
+        ).strip()
+        
+        # If raw_country is missing or equal to 'N/A', fall back to search_location
+        if not raw_country or raw_country.upper() == 'N/A':
+            country = search_location.strip().title() if search_location else 'N/A'
+        else:
+            country = raw_country.title()
         
         row = [
             record_id,                                                                     # 1. Record ID
